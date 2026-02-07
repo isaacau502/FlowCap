@@ -34,7 +34,7 @@ Simple iOS app to stream IMU data to a WebSocket server.
 
 ## Usage
 
-1. Enter your PC's IP address (e.g., `172.26.6.110`)
+1. Enter your PC's IP address (e.g., `123.24.2.100`)
 2. Enter port (default: `8765`)
 3. Tap "START STREAMING"
 4. IMU data will stream at 100 Hz to your Python server
