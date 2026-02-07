@@ -42,6 +42,17 @@ const state = {
   isGoofy: true,
 };
 
+const chaseCam = {
+  active: false,
+  currentPos: new THREE.Vector3(0, -3.5, 1.5),
+  currentTarget: new THREE.Vector3(0, 0, 0.6),
+  distance: 3.5,
+  height: 1.5,
+  leanGain: 1.6,
+  yawGain: 0.8,
+  smoothing: 0.025,
+};
+
 const playback = {
   data: [],
   duration: 0,
@@ -92,14 +103,14 @@ const dims = {
 };
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color("#0a0e14");
+scene.background = new THREE.Color(0x020408);
 scene.up.set(0, 0, 1);
 
 const camera = new THREE.PerspectiveCamera(
   45,
   window.innerWidth / window.innerHeight,
   0.01,
-  50
+  200
 );
 camera.position.set(1.4, -2.0, 1.1);
 camera.up.set(0, 0, 1);
@@ -120,18 +131,129 @@ controls.enableDamping = true;
 controls.target.set(0, 0, 0.6);
 controls.update();
 
-scene.fog = new THREE.FogExp2(0x0a0e14, 0.18);
+scene.fog = new THREE.FogExp2(0x020408, 0.025);
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-const hemiLight = new THREE.HemisphereLight(0x4a6fa5, 0x2d1b4e, 0.4);
+const hemiLight = new THREE.HemisphereLight(0x1a2a44, 0x0a0014, 0.3);
 scene.add(hemiLight);
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
 dirLight.position.set(2, -2, 3);
 scene.add(dirLight);
 
-const grid = new THREE.GridHelper(4, 20, 0x1a2540, 0x111827);
-grid.rotation.x = Math.PI / 2;
-scene.add(grid);
+// ── Tron Grid Floor ──────────────────────────────────────────────────────
+const tronGridMaterial = new THREE.ShaderMaterial({
+  transparent: true,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+  uniforms: {
+    uColor: { value: new THREE.Color(0x00d4ff) },
+    uTime: { value: 0.0 },
+    uFadeStart: { value: 1.5 },
+    uFadeEnd: { value: 50.0 },
+  },
+  vertexShader: `
+    varying vec3 vWorldPos;
+    void main() {
+      vec4 worldPos = modelMatrix * vec4(position, 1.0);
+      vWorldPos = worldPos.xyz;
+      gl_Position = projectionMatrix * viewMatrix * worldPos;
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 uColor;
+    uniform float uTime;
+    uniform float uFadeStart;
+    uniform float uFadeEnd;
+    varying vec3 vWorldPos;
+
+    float gridLine(float coord, float lineWidth) {
+      float d = abs(fract(coord - 0.5) - 0.5);
+      float fw = fwidth(coord);
+      return 1.0 - smoothstep(lineWidth - fw, lineWidth + fw, d);
+    }
+
+    void main() {
+      float smallGrid = 0.5;
+      float largeGrid = 2.0;
+
+      float lineSmall = gridLine(vWorldPos.x / smallGrid, 0.02)
+                       + gridLine(vWorldPos.y / smallGrid, 0.02);
+      lineSmall = clamp(lineSmall, 0.0, 1.0);
+
+      float lineLarge = gridLine(vWorldPos.x / largeGrid, 0.03)
+                       + gridLine(vWorldPos.y / largeGrid, 0.03);
+      lineLarge = clamp(lineLarge, 0.0, 1.0);
+
+      float intensity = lineSmall * 0.18 + lineLarge * 0.55;
+
+      float dist = length(vWorldPos.xy);
+      float fade = 1.0 - smoothstep(uFadeStart, uFadeEnd, dist);
+      fade *= fade;
+
+      // Gentle pulse: oscillates 0.85–1.15 over ~4 seconds
+      float pulse = 1.0 + 0.15 * sin(uTime * 1.6);
+
+      // Soft glow halo around lines (wider falloff for bloom feel)
+      float bloomSmall = lineSmall * 0.10;
+      float bloomLarge = lineLarge * 0.20;
+      float glow = (bloomSmall + bloomLarge) * pulse;
+
+      float alpha = (intensity * pulse + glow) * fade;
+
+      if (alpha < 0.005) discard;
+
+      // Boost color brightness on glow portions for bloom
+      vec3 col = uColor * (intensity * pulse + glow * 1.5);
+      gl_FragColor = vec4(col, alpha * 0.7);
+    }
+  `,
+});
+const tronGrid = new THREE.Mesh(
+  new THREE.PlaneGeometry(120, 120, 1, 1),
+  tronGridMaterial
+);
+tronGrid.position.z = -0.001;
+tronGrid.renderOrder = -1;
+scene.add(tronGrid);
+
+// ── Horizon Glow Band ────────────────────────────────────────────────────
+const horizonMat = new THREE.ShaderMaterial({
+  transparent: true,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+  uniforms: { uColor: { value: new THREE.Color(0x00d4ff) } },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 uColor;
+    varying vec2 vUv;
+    void main() {
+      float glow = smoothstep(0.7, 0.0, vUv.y);
+      float edgeFade = smoothstep(0.0, 0.05, vUv.x) * smoothstep(1.0, 0.95, vUv.x);
+      float alpha = glow * edgeFade * 0.06;
+      if (alpha < 0.002) discard;
+      gl_FragColor = vec4(uColor * 0.5, alpha);
+    }
+  `,
+});
+const hGeo = new THREE.PlaneGeometry(120, 8, 1, 1);
+[
+  { pos: [0, 60, 4], rot: [Math.PI / 2, 0, 0] },
+  { pos: [0, -60, 4], rot: [-Math.PI / 2, 0, 0] },
+  { pos: [60, 0, 4], rot: [Math.PI / 2, 0, -Math.PI / 2] },
+  { pos: [-60, 0, 4], rot: [Math.PI / 2, 0, Math.PI / 2] },
+].forEach(({ pos, rot }) => {
+  const h = new THREE.Mesh(hGeo, horizonMat);
+  h.position.set(...pos);
+  h.rotation.set(...rot);
+  h.renderOrder = -2;
+  scene.add(h);
+});
 
 const axes = new THREE.AxesHelper(0.6);
 axes.visible = false;
@@ -1170,6 +1292,10 @@ function bindUI() {
   };
 
   function setCameraPreset(preset) {
+    chaseCam.active = false;
+    controls.enabled = true;
+    const povBtn = document.getElementById("camPov");
+    if (povBtn) povBtn.classList.remove("active");
     const p = camPresets[preset];
     if (!p) return;
     camera.position.copy(p.pos);
@@ -1180,7 +1306,20 @@ function bindUI() {
   document.getElementById("camFront").addEventListener("click", () => setCameraPreset("front"));
   document.getElementById("camTop").addEventListener("click", () => setCameraPreset("top"));
   document.getElementById("camBehind").addEventListener("click", () => setCameraPreset("behind"));
-  document.getElementById("camPov").addEventListener("click", () => setCameraPreset("pov"));
+
+  document.getElementById("camPov").addEventListener("click", () => {
+    chaseCam.active = !chaseCam.active;
+    const btn = document.getElementById("camPov");
+    if (chaseCam.active) {
+      controls.enabled = false;
+      chaseCam.currentPos.copy(camera.position);
+      chaseCam.currentTarget.copy(controls.target);
+      if (btn) btn.classList.add("active");
+    } else {
+      controls.enabled = true;
+      if (btn) btn.classList.remove("active");
+    }
+  });
 
   // Auto-orbit toggle
   let autoOrbitActive = false;
@@ -1901,9 +2040,29 @@ loadCsvPlayback("/inputs/board_viz.csv").then((ok) => {
   }
 });
 
+function updateChaseCam() {
+  const angleRad = degToRad(
+    state.leanDeg * chaseCam.leanGain + state.torsoRot * chaseCam.yawGain
+  );
+  const idealPos = new THREE.Vector3(
+    Math.sin(angleRad) * chaseCam.distance,
+    -Math.cos(angleRad) * chaseCam.distance,
+    chaseCam.height
+  );
+  const idealTarget = new THREE.Vector3(0, 0, 0.6);
+
+  chaseCam.currentPos.lerp(idealPos, chaseCam.smoothing);
+  chaseCam.currentTarget.lerp(idealTarget, chaseCam.smoothing);
+
+  camera.position.copy(chaseCam.currentPos);
+  controls.target.copy(chaseCam.currentTarget);
+}
+
 function animate() {
   requestAnimationFrame(animate);
+  tronGridMaterial.uniforms.uTime.value = performance.now() * 0.001;
   tickPlayback();
+  if (chaseCam.active) updateChaseCam();
   controls.update();
   renderer.render(scene, camera);
 }

@@ -284,6 +284,7 @@ html, body {
   background: #1a5eb0;
 }
 
+.cam-buttons button.active,
 .cam-orbit-btn.active {
   background: rgba(0, 255, 136, 0.2);
   border-color: rgba(0, 255, 136, 0.4);
@@ -291,6 +292,7 @@ html, body {
   box-shadow: 0 0 8px rgba(0, 255, 136, 0.2);
 }
 
+.cam-buttons button.active:hover,
 .cam-orbit-btn.active:hover {
   background: rgba(0, 255, 136, 0.3);
 }
