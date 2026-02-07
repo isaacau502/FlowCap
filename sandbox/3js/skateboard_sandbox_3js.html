@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SkateVis</title>
+    <link rel="stylesheet" href="./skateboard_sandbox_3js.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.159.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.159.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <div id="canvas"></div>
+      <div id="ui">
+        <!-- Zone 1: Branding + Connection -->
+        <div class="panel-header">
+          <div class="brand">
+            <div class="brand-name">SkateVis</div>
+            <div class="brand-tagline">Real-time Rider Posture</div>
+          </div>
+          <div class="status-row">
+            <div class="live-indicator-wrapper">
+              <span id="liveIndicator" class="live-dot"></span>
+              <span id="liveLabel" class="live-label">OFFLINE</span>
+            </div>
+            <div class="imu-badges">
+              <div class="imu-badge">
+                <span id="boardDot" class="live-dot dot-sm"></span>
+                <span class="imu-label">Board</span>
+              </div>
+              <div class="imu-badge">
+                <span id="bodyDot" class="live-dot dot-sm"></span>
+                <span class="imu-label">Body</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Zone 2: Telemetry -->
+        <div class="telemetry">
+          <div class="telem-hero"><span id="carveState">STRAIGHT</span><div class="telem-hero-sub" id="carveSubtitle">Flat Board</div></div>
+          <div class="telem-grid">
+            <div class="telem-card">
+              <div class="telem-value"><span id="tSquat">0</span><span class="telem-unit">%</span></div>
+              <div class="telem-label">Crouch</div>
+            </div>
+            <div class="telem-card">
+              <div class="telem-value"><span id="tLean">0.0</span><span class="telem-unit">&deg;</span></div>
+              <div class="telem-label">Board Tilt</div>
+            </div>
+            <div class="telem-card">
+              <div class="telem-value"><span id="tKnee">170</span><span class="telem-unit">&deg;</span></div>
+              <div class="telem-label">Knee Bend</div>
+            </div>
+            <div class="telem-card">
+              <div class="telem-value"><span id="tRotation">0</span><span class="telem-unit">&deg;</span></div>
+              <div class="telem-label">Body Twist</div>
+            </div>
+            <div class="telem-card">
+              <div class="telem-value"><span id="tHipShift">0</span><span class="telem-unit">cm</span></div>
+              <div class="telem-label">Balance</div>
+            </div>
+            <div class="telem-card">
+              <div class="telem-value"><span id="tPitch">0</span><span class="telem-unit">&deg;</span></div>
+              <div class="telem-label">Fwd Lean</div>
+            </div>
+            <div class="telem-card">
+              <div class="telem-value"><span id="tSlope">0.0</span><span class="telem-unit">&deg;</span></div>
+              <div class="telem-label">Slope</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Zone 3: Camera presets -->
+        <div class="cam-buttons">
+          <button id="camFront">Front</button>
+          <button id="camTop">Top</button>
+          <button id="camBehind">Back</button>
+          <button id="camPov">POV</button>
+          <button id="camOrbit" class="cam-orbit-btn">Orbit</button>
+        </div>
+
+        <!-- Zone 4: Record & Sessions -->
+        <div class="session-zone">
+          <div class="record-row">
+            <button id="recordBtn" class="record-btn">
+              <span class="rec-dot"></span> Record
+            </button>
+            <button id="stopRecordBtn" class="stop-btn" style="display:none">
+              Stop
+            </button>
+          </div>
+          <div id="recTimer" class="rec-timer" style="display:none">
+            <span class="rec-dot rec-dot-pulse"></span>
+            <span id="recTimerText">0:00</span>
+          </div>
+
+          <button id="sessionsToggle" class="debug-toggle">Sessions</button>
+          <div id="sessionsPanel" class="sessions-panel collapsed">
+            <div id="sessionsList" class="sessions-list">
+              <div class="session-empty">No recordings yet</div>
+            </div>
+          </div>
+
+          <div id="playbackBar" class="playback-bar" style="display:none">
+            <div class="playback-controls">
+              <button id="pbPlayPause" class="pb-btn" title="Play/Pause">&#9654;</button>
+              <input type="range" id="pbScrub" min="0" max="1000" value="0" step="1" />
+              <span id="pbTime" class="pb-time">0:00 / 0:00</span>
+            </div>
+            <div class="playback-speed">
+              <button class="speed-btn" data-speed="0.25">0.25x</button>
+              <button class="speed-btn" data-speed="0.5">0.5x</button>
+              <button class="speed-btn active" data-speed="1">1x</button>
+              <button class="speed-btn" data-speed="2">2x</button>
+            </div>
+            <button id="backToLive" class="back-to-live-btn">Back to Live</button>
+          </div>
+        </div>
+
+        <!-- Zone 5: Collapsible debug panel -->
+        <button id="debugToggle" class="debug-toggle">Debug</button>
+        <div id="debugPanel" class="debug-panel collapsed">
+          <div class="control">
+            <label for="squat">Squat % <span id="squatValue">0</span></label>
+            <input type="range" id="squat" min="0" max="100" value="0" step="1" />
+          </div>
+          <div class="control">
+            <label for="edge">Lean &deg; <span id="edgeValue">0</span></label>
+            <input type="range" id="edge" min="-45" max="45" value="0" step="1" />
+          </div>
+          <div class="control">
+            <label for="rotation">Rotation &deg; <span id="rotationValue">0</span></label>
+            <input type="range" id="rotation" min="-90" max="90" value="0" step="1" />
+          </div>
+          <div class="control">
+            <label for="pitch">Pitch &deg; <span id="pitchValue">0</span></label>
+            <input type="range" id="pitch" min="-45" max="45" value="0" step="1" />
+          </div>
+          <div class="control">
+            <label for="roll">Roll &deg; <span id="rollValue">0</span></label>
+            <input type="range" id="roll" min="-45" max="45" value="0" step="1" />
+          </div>
+          <div class="control">
+            <label for="slope">Slope &deg; <span id="slopeValue">0</span></label>
+            <input type="range" id="slope" min="-30" max="30" value="0" step="1" />
+          </div>
+          <div class="control row">
+            <div class="hint">negative=heelside, positive=toeside</div>
+            <button id="reset">Reset</button>
+          </div>
+          <div class="control row">
+            <div class="hint">CSV: inputs/board_viz.csv</div>
+            <button id="playToggle">Pause</button>
+          </div>
+          <button id="liveToggle" class="debug-btn">Live: ON</button>
+          <div class="control row">
+            <button id="rec10">Rec 10s</button>
+            <button id="rec30">Rec 30s</button>
+          </div>
+        </div>
+
+        <div class="hint footer-hint">Drag to orbit &middot; Scroll to zoom &middot; C calibrate &middot; T trail</div>
+      </div>
+    </div>
+    <script type="module" src="./skateboard_sandbox_3js.js?v=3"></script>
+  </body>
+</html>
